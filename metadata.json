@@ -1,0 +1,10 @@
+{
+    "vocab_size": 10000,
+    "max_length": 256,
+    "model_name": "imdb_sentiment_model",
+    "description": "Sentiment analysis model for IMDB reviews",
+    "labels": [
+        "negative",
+        "positive"
+    ]
+}
