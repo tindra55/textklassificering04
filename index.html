@@ -1,0 +1,200 @@
+# index.html
+
+```html
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IMDB Sentiment Analysis</title>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 40px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      max-width: 700px;
+      width: 100%;
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    textarea {
+      width: 100%;
+      height: 160px;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+
+    button {
+      margin-top: 16px;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .result {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 8px;
+      background: #f0f4ff;
+      font-size: 18px;
+    }
+
+    .loading {
+      color: #666;
+      margin-top: 10px;
+    }
+
+    .footer {
+      margin-top: 24px;
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>IMDB Sentiment Analysis</h1>
+    <p>
+      Skriv en recension nedan och låt modellen avgöra om den är positiv eller negativ.
+    </p>
+
+    <textarea id="inputText" placeholder="Exempel: This movie was amazing and I loved every minute of it..."></textarea>
+
+    <button onclick="predictSentiment()">Analysera</button>
+
+    <div class="loading" id="loading">Laddar modell...</div>
+
+    <div class="result" id="result" style="display:none;"></div>
+
+    <div class="footer">
+      Filer som måste ligga i samma GitHub-mapp:
+      <ul>
+        <li>index.html</li>
+        <li>model.json</li>
+        <li>metadata.json</li>
+        <li>group1-shard1of1.bin</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    let model;
+    let metadata;
+
+    async function loadModel() {
+      try {
+        // Ladda metadata
+        const metadataResponse = await fetch('./metadata.json');
+        metadata = await metadataResponse.json();
+
+        // Ladda TensorFlow.js-modellen
+        model = await tf.loadLayersModel('./model.json');
+
+        document.getElementById('loading').innerText = 'Modellen är laddad.';
+      } catch (error) {
+        console.error(error);
+        document.getElementById('loading').innerText = 'Kunde inte ladda modellen.';
+      }
+    }
+
+    // Enkel tokenizer
+    function tokenize(text, maxLength = 256) {
+      const words = text
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9 ]/g, '')
+        .split(/\s+/)
+        .filter(Boolean);
+
+      // Enkel hashing/tokenisering
+      const sequence = words.map(word => {
+        let hash = 0;
+        for (let i = 0; i < word.length; i++) {
+          hash = ((hash << 5) - hash) + word.charCodeAt(i);
+          hash |= 0;
+        }
+
+        return Math.abs(hash) % 10000;
+      });
+
+      // Padding/trunkering
+      if (sequence.length > maxLength) {
+        return sequence.slice(0, maxLength);
+      }
+
+      while (sequence.length < maxLength) {
+        sequence.push(0);
+      }
+
+      return sequence;
+    }
+
+    async function predictSentiment() {
+      if (!model) {
+        alert('Modellen laddas fortfarande...');
+        return;
+      }
+
+      const text = document.getElementById('inputText').value;
+
+      if (!text.trim()) {
+        alert('Skriv in text först.');
+        return;
+      }
+
+      const sequence = tokenize(text, metadata.max_length || 256);
+
+      const inputTensor = tf.tensor2d([sequence], [1, sequence.length]);
+
+      const prediction = model.predict(inputTensor);
+      const score = (await prediction.data())[0];
+
+      const sentiment = score > 0.5
+        ? metadata.labels[1]
+        : metadata.labels[0];
+
+      const confidence = (score > 0.5 ? score : 1 - score) * 100;
+
+      const resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+
+      resultDiv.innerHTML = `
+        <strong>Resultat:</strong> ${sentiment}<br>
+        <strong>Säkerhet:</strong> ${confidence.toFixed(2)}%
+      `;
+
+      tf.dispose([inputTensor, prediction]);
+    }
+
+    loadModel();
+  </script>
+</body>
+</html>
